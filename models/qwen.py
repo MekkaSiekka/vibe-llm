@@ -170,10 +170,21 @@ class QwenModel:
         logger.info(f"_generate_async called with max_length={max_length}, temperature={temperature}, top_p={top_p}")
         
         with torch.no_grad():
-            # Calculate max_new_tokens safely
+            # Calculate max_new_tokens safely with better limits
             input_length = inputs['input_ids'].shape[1]
-            max_new_tokens = max(1, min(max_length - input_length, 512))  # Ensure positive and reasonable
-            logger.info(f"Input length: {input_length}, max_new_tokens: {max_new_tokens}")
+            
+            # More reasonable token limits to prevent runaway generation
+            if max_length <= 50:
+                max_tokens_limit = 40
+            elif max_length <= 100:
+                max_tokens_limit = 80
+            elif max_length <= 500:
+                max_tokens_limit = 250
+            else:
+                max_tokens_limit = 500  # Hard safety limit
+                
+            max_new_tokens = max(1, min(max_length - input_length, max_tokens_limit))
+            logger.info(f"Input length: {input_length}, max_new_tokens: {max_new_tokens}, limit: {max_tokens_limit}")
             
             logger.info("Starting streaming generation token by token...")
             
@@ -183,8 +194,18 @@ class QwenModel:
             chunk_count = 0
             generated_text = ""  # Track full generated text for word counting
             
+            # Safety timeout - prevent infinite loops
+            import time
+            start_time = time.time()
+            max_generation_time = min(120, max_new_tokens * 0.3)  # Max 120 seconds or 0.3s per token
+            
             # Generate tokens one by one for true streaming
             while generated_tokens < max_new_tokens:
+                # Safety timeout check
+                elapsed_time = time.time() - start_time
+                if elapsed_time > max_generation_time:
+                    logger.warning(f"Generation timeout after {elapsed_time:.2f}s, stopping")
+                    break
                 try:
                     # Generate next token
                     with torch.no_grad():
@@ -215,9 +236,12 @@ class QwenModel:
                         # Greedy sampling
                         next_token = torch.argmax(logits, dim=-1, keepdim=True)
                     
-                    # Check for EOS token
-                    if next_token.item() == self.tokenizer.eos_token_id:
-                        logger.info("EOS token generated, stopping")
+                    # Enhanced EOS token detection
+                    token_id = next_token.item()
+                    if (token_id == self.tokenizer.eos_token_id or 
+                        (hasattr(self.tokenizer, 'pad_token_id') and token_id == self.tokenizer.pad_token_id) or
+                        token_id == self.tokenizer.sep_token_id if hasattr(self.tokenizer, 'sep_token_id') else False):
+                        logger.info(f"EOS/PAD/SEP token detected (id: {token_id}), stopping generation")
                         break
                     
                     # Decode the new token
@@ -233,18 +257,32 @@ class QwenModel:
                         
                         yield token_text
                         
-                        # Stop if we've reached reasonable word limits based on max_length
-                        if max_length <= 50 and word_count >= 15:  # Short responses
+                        # More reasonable stopping conditions
+                        # Only stop early for very short requests
+                        if max_length <= 30 and word_count >= 20:  # Very short responses only
+                            logger.info(f"Stopping early: reached {word_count} words for very short response")
+                            break
+                        elif max_length <= 50 and word_count >= 35:  # Short responses
                             logger.info(f"Stopping early: reached {word_count} words for short response")
                             break
-                        elif max_length <= 100 and word_count >= 30:  # Medium responses
-                            logger.info(f"Stopping early: reached {word_count} words for medium response")
+                        elif word_count >= 300:  # Safety limit for all responses
+                            logger.info(f"Stopping at safety word limit: {word_count} words")
                             break
                         
-                        # Stop at natural sentence endings for very short requests
-                        if max_length <= 50 and word_count >= 8 and token_text.strip().endswith(('.', '!', '?')):
+                        # Stop at natural sentence endings only for short requests
+                        if (max_length <= 50 and word_count >= 15 and 
+                            token_text.strip().endswith(('.', '!', '?', '。', '！', '？'))):
                             logger.info(f"Stopping at sentence end: {word_count} words")
                             break
+                        
+                        # Repetition detection - check if we're repeating recent content
+                        if len(generated_text) > 150 and word_count > 50:  # Only check after substantial content
+                            recent_text = generated_text[-30:]  # Last 30 characters
+                            earlier_text = generated_text[:-30]  # Everything before that
+                            # Only stop if we have significant repetition AND reasonable length
+                            if recent_text in earlier_text and len(recent_text.strip()) > 10:
+                                logger.warning(f"Significant repetition detected, stopping generation at {word_count} words")
+                                break
                         
                         # Small delay for human observation
                         import asyncio
