@@ -70,24 +70,8 @@ class HardwareDetector:
         
         # Qwen model variants based on hardware
         if self.specs.has_gpu and self.specs.gpu_memory_gb >= 8:
-            # High-end GPU models - start with smaller models for faster testing
+            # High-end GPU models - prioritize quality models for powerful hardware
             compatible_models.extend([
-                {
-                    "name": "Qwen3-0.6B",
-                    "model_id": "Qwen/Qwen3-0.6B",
-                    "size_gb": 1.2,
-                    "languages": ["en", "zh"],
-                    "recommended": True,
-                    "device": "cuda"
-                },
-                {
-                    "name": "Qwen2.5-3B-Instruct",
-                    "model_id": "Qwen/Qwen2.5-3B-Instruct",
-                    "size_gb": 6,
-                    "languages": ["en", "zh", "fr", "de", "es", "ru", "ja", "ko"],
-                    "recommended": False,
-                    "device": "cuda"
-                },
                 {
                     "name": "Qwen2.5-7B-Instruct",
                     "model_id": "Qwen/Qwen2.5-7B-Instruct",
@@ -101,6 +85,22 @@ class HardwareDetector:
                     "model_id": "Qwen/Qwen3-4B-Instruct-2507",
                     "size_gb": 8,
                     "languages": ["en", "zh", "fr", "de", "es", "ru", "ja", "ko"],
+                    "recommended": False,
+                    "device": "cuda"
+                },
+                {
+                    "name": "Qwen2.5-3B-Instruct",
+                    "model_id": "Qwen/Qwen2.5-3B-Instruct",
+                    "size_gb": 6,
+                    "languages": ["en", "zh", "fr", "de", "es", "ru", "ja", "ko"],
+                    "recommended": False,
+                    "device": "cuda"
+                },
+                {
+                    "name": "Qwen3-0.6B",
+                    "model_id": "Qwen/Qwen3-0.6B",
+                    "size_gb": 1.2,
+                    "languages": ["en", "zh"],
                     "recommended": False,
                     "device": "cuda"
                 }

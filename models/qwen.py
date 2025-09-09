@@ -56,16 +56,32 @@ class QwenModel:
     
     def _load_model(self):
         """Load model synchronously in thread pool."""
-        # Configure quantization for memory efficiency
+        # Configure quantization based on available VRAM
         quantization_config = None
         if self.device == "cuda" and torch.cuda.is_available():
-            # Use 4-bit quantization for GPU memory efficiency
-            quantization_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.float16,
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_type="nf4"
-            )
+            # Check available VRAM to decide quantization level
+            gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            
+            if gpu_memory_gb >= 12:
+                # High-end GPU: Use FP16 for best quality
+                quantization_config = None
+                logger.info(f"Using FP16 precision for high-end GPU ({gpu_memory_gb:.1f}GB VRAM)")
+            elif gpu_memory_gb >= 8:
+                # Mid-range GPU: Use 8-bit quantization for balance
+                quantization_config = BitsAndBytesConfig(
+                    load_in_8bit=True,
+                    bnb_8bit_compute_dtype=torch.float16
+                )
+                logger.info(f"Using 8-bit quantization for mid-range GPU ({gpu_memory_gb:.1f}GB VRAM)")
+            else:
+                # Low VRAM: Use 4-bit quantization
+                quantization_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4"
+                )
+                logger.info(f"Using 4-bit quantization for low VRAM GPU ({gpu_memory_gb:.1f}GB VRAM)")
         
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
@@ -299,15 +315,25 @@ class QwenModel:
             logger.info("_generate_async completed")
     
     def _format_prompt(self, prompt: str, language: str) -> str:
-        """Format prompt with language-specific instructions."""
-        if language == "auto":
-            return prompt
+        """Format prompt with proper conversation context."""
+        # Detect if the prompt is in Chinese and format accordingly
+        if any('\u4e00' <= char <= '\u9fff' for char in prompt):
+            # Chinese prompt - use Chinese conversation format
+            if language == "auto":
+                return f"用户: {prompt.strip()}\n\n助手: "
+            elif language in self.language_codes:
+                lang_name = self.language_codes[language]
+                return f"用户: {prompt.strip()}\n请用{lang_name}回答。\n\n助手: "
+        else:
+            # English prompt - use English conversation format
+            if language == "auto":
+                return f"User: {prompt.strip()}\n\nAssistant: "
+            elif language in self.language_codes:
+                lang_name = self.language_codes[language]
+                return f"User: {prompt.strip()}\nPlease respond in {lang_name}.\n\nAssistant: "
         
-        if language in self.language_codes:
-            lang_name = self.language_codes[language]
-            return f"Please respond in {lang_name} ({language}):\n\n{prompt}"
-        
-        return prompt
+        # Fallback for other cases
+        return f"User: {prompt.strip()}\n\nAssistant: "
     
     async def get_model_info(self) -> Dict[str, Any]:
         """Get model information and capabilities."""
