@@ -1,4 +1,4 @@
-# 🚀 Vibe LLM
+# 🚀 Vibe LLM [This is the only line I wrote]
 
 A high-performance local LLM service with **real-time WebSocket streaming** and **hot-swappable models**. Built for speed, scalability, and that ChatGPT-like streaming experience.
 
