@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  local-llm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    ports:
+      - "8000:8000"  # REST API
+      - "8001:8001"  # WebSocket
+    volumes:
+      - ./models_cache:/app/models_cache
+      - ./logs:/app/logs
+      - .:/app
+    environment:
+      - PYTHONPATH=/app
+      - MODEL_CACHE_DIR=/app/models_cache
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Production service
+  local-llm-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models_cache:/app/models_cache
+      - ./logs:/app/logs
+    environment:
+      - PYTHONPATH=/app
+      - MODEL_CACHE_DIR=/app/models_cache
+      - LOG_LEVEL=WARNING
+    restart: unless-stopped
+    profiles:
+      - production
+
