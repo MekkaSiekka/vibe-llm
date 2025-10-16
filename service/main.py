@@ -85,6 +85,18 @@ class ModelSwitchRequest(BaseModel):
     model_name: str = Field(..., description="Name of model to switch to")
 
 
+class AIDetectionRequest(BaseModel):
+    text: str = Field(..., description="Text to analyze for AI generation")
+    detector: Optional[str] = Field(None, description="Specific detector to use")
+    use_multiple: bool = Field(False, description="Use multiple detectors for consensus")
+
+
+class DetectorAddRequest(BaseModel):
+    detector_name: str = Field(..., description="Name of the detector")
+    detector_type: str = Field("local", description="Type: 'local' or 'api'")
+    api_key: Optional[str] = Field(None, description="API key for external services")
+
+
 class HealthResponse(BaseModel):
     status: str
     message: str
@@ -265,6 +277,66 @@ async def simple_chat(message: str, model: Optional[str] = None):
         raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
 
+# AI Detection Endpoints
+@app.post("/detect/ai")
+async def detect_ai_text(request: AIDetectionRequest):
+    """Detect if text is AI-generated with detailed results."""
+    if not model_manager:
+        raise HTTPException(status_code=503, detail="Model manager not initialized")
+    
+    result = await model_manager.detect_ai_text(
+        text=request.text,
+        detector_name=request.detector,
+        return_probabilities=request.use_multiple  # Use this field for detailed results
+    )
+    
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result.get("error", "Detection failed"))
+    
+    return result
+
+
+@app.post("/detect/ai/simple")
+async def simple_ai_detection(text: str, detector: Optional[str] = None):
+    """Simple AI detection endpoint for quick testing."""
+    if not model_manager:
+        raise HTTPException(status_code=503, detail="Model manager not initialized")
+    
+    result = await model_manager.detect_ai_text(
+        text=text, 
+        detector_name=detector,
+        return_probabilities=False
+    )
+    
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result.get("error", "Detection failed"))
+    
+    return {
+        "text": text[:100] + "..." if len(text) > 100 else text,
+        "is_ai_generated": result["is_ai_generated"],
+        "confidence": result["confidence"],
+        "ai_probability": result.get("ai_probability", result["confidence"]),
+        "human_probability": result.get("human_probability", 1.0 - result["confidence"]),
+        "model": result.get("model", "unknown"),
+        "text_length": result.get("text_length", len(text)),
+        "processing_time": result.get("processing_time", 0.0)
+    }
+
+
+@app.get("/detectors")
+async def list_ai_detectors():
+    """List all available AI detection models."""
+    if not model_manager:
+        raise HTTPException(status_code=503, detail="Model manager not initialized")
+    
+    result = await model_manager.get_ai_detectors()
+    
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result.get("error", "Failed to get detectors"))
+    
+    return result
+
+
 # WebSocket endpoint
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, client_id: str = "default"):
@@ -301,8 +373,18 @@ async def root():
             "system": "/system",
             "models": "/models",
             "chat": "/chat",
-            "websocket": "/ws"
-        }
+            "websocket": "/ws",
+            "ai_detection": "/detect/ai",
+            "simple_detection": "/detect/ai/simple",
+            "detectors": "/detectors"
+        },
+        "features": [
+            "Hot-swappable LLM models",
+            "Local AI text detection",
+            "Hardware-optimized model selection",
+            "Real-time WebSocket streaming",
+            "REST API endpoints"
+        ]
     }
 
 

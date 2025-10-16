@@ -64,7 +64,15 @@ async def handle_websocket(websocket: WebSocket, client_id: str = "default"):
             
             logger.info(f"WebSocket received message: {message_data}")
             
-            # Extract message content
+            # Check message type
+            message_type = message_data.get("type", "chat")
+            
+            if message_type == "detect":
+                # Handle AI detection request
+                await handle_detection_request(websocket, client_id, message_data)
+                continue
+            
+            # Extract chat message content
             message = message_data.get("message", "")
             model_id = message_data.get("model", None)
             max_length = message_data.get("max_length", 2048)
@@ -153,3 +161,69 @@ async def handle_websocket(websocket: WebSocket, client_id: str = "default"):
     except Exception as e:
         logger.error(f"WebSocket error for {client_id}: {e}")
         manager.disconnect(client_id)
+
+
+async def handle_detection_request(websocket, client_id: str, message_data: dict):
+    """Handle AI detection requests via WebSocket."""
+    try:
+        text = message_data.get("text", "")
+        detector = message_data.get("detector", None)
+        use_multiple = message_data.get("use_multiple", False)
+        
+        if not text:
+            await manager.send_message(client_id, {
+                "type": "detection_error",
+                "content": "No text provided for detection"
+            })
+            return
+        
+        # Send acknowledgment
+        await manager.send_message(client_id, {
+            "type": "detection_start",
+            "content": "Starting AI detection..."
+        })
+        
+        # Get model manager
+        from service.main import model_manager
+        if not model_manager:
+            await manager.send_message(client_id, {
+                "type": "detection_error",
+                "content": "Model manager not available"
+            })
+            return
+        
+        # Perform detection
+        result = await model_manager.detect_ai_text(
+            text=text,
+            detector_name=detector,
+            return_probabilities=use_multiple
+        )
+        
+        if result.get("success", False):
+            # Send detection result
+            await manager.send_message(client_id, {
+                "type": "detection_result",
+                "content": "Detection completed",
+                "is_ai_generated": result["is_ai_generated"],
+                "confidence": result["confidence"],
+                "ai_probability": result.get("ai_probability", result["confidence"]),
+                "human_probability": result.get("human_probability", 1.0 - result["confidence"]),
+                "model": result.get("model", "unknown"),
+                "text_length": result.get("text_length", len(text)),
+                "chunks_processed": result.get("chunks_processed", 1),
+                "detection_method": result.get("detection_method", "transformer_classification"),
+                "processing_time": result.get("processing_time", 0.0),
+                "chunk_results": result.get("chunk_results", []) if use_multiple else None
+            })
+        else:
+            await manager.send_message(client_id, {
+                "type": "detection_error",
+                "content": f"Detection failed: {result.get('error', 'Unknown error')}"
+            })
+        
+    except Exception as e:
+        logger.error(f"Error in detection request handling: {e}")
+        await manager.send_message(client_id, {
+            "type": "detection_error",
+            "content": f"Detection error: {str(e)}"
+        })
