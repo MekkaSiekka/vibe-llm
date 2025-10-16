@@ -1,19 +1,64 @@
 """
 Pytest configuration and fixtures for Local LLM Service tests.
+
+All tests run in offline mode with mocked dependencies to ensure:
+- No real model downloads
+- No network calls
+- Fast, deterministic test execution
 """
 
 import pytest
 import asyncio
+import os
 
 import tempfile
 import shutil
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from typing import Dict, Any
 
 from models.manager import ModelManager
 from models.detector import HardwareDetector
 from models.qwen import QwenModel
+
+
+@pytest.fixture(scope="session", autouse=True)
+def enforce_offline_mode():
+    """
+    Enforce offline mode for all tests to prevent real downloads and network calls.
+    This fixture runs automatically for all tests.
+    """
+    # Set environment variables to enforce offline mode
+    os.environ['TRANSFORMERS_OFFLINE'] = '1'
+    os.environ['HF_HUB_OFFLINE'] = '1'
+    os.environ['PYTEST_RUNNING'] = '1'
+    
+    # Mock network-related modules to prevent accidental network calls
+    with patch('urllib.request.urlopen') as mock_urlopen, \
+         patch('requests.get') as mock_requests_get, \
+         patch('requests.post') as mock_requests_post, \
+         patch('httpx.get') as mock_httpx_get, \
+         patch('httpx.post') as mock_httpx_post:
+        
+        # Configure mocks to raise helpful errors if called
+        def offline_error(*args, **kwargs):
+            raise RuntimeError(
+                "Network call attempted during offline test! "
+                "Tests should use mocked dependencies only."
+            )
+        
+        mock_urlopen.side_effect = offline_error
+        mock_requests_get.side_effect = offline_error
+        mock_requests_post.side_effect = offline_error
+        mock_httpx_get.side_effect = offline_error
+        mock_httpx_post.side_effect = offline_error
+        
+        yield
+    
+    # Clean up environment variables
+    os.environ.pop('TRANSFORMERS_OFFLINE', None)
+    os.environ.pop('HF_HUB_OFFLINE', None)
+    os.environ.pop('PYTEST_RUNNING', None)
 
 
 @pytest.fixture(scope="session")

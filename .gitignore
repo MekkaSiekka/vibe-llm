@@ -56,8 +56,17 @@ logs/
 ehthumbs.db
 Thumbs.db
 
-# Test files
-test_*.py
+# Ad-hoc test scripts (not the tests/ directory)
+test_ai_detection.py
+test_detection_simple.py
+test_detectors.py
+test_endpoints.py
+test_gptzero.py
+test_service.py
+test_websocket.py
+client_example.py
+detect_cli.py
+detect_simple.py
 debug_*.py
 simple_*.py
 load_*.py
@@ -80,3 +89,20 @@ quick_*.py
 tmp/
 temp/
 *.tmp
+
+# Coverage and test reports
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+.hypothesis/
+coverage.xml
+*.cover
+.cache
+nosetests.xml
+test-results/
+junit.xml
+
+# Examples directory (if needed, uncomment)
+# examples/
