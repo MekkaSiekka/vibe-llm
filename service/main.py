@@ -143,7 +143,8 @@ async def list_models():
     if not model_manager:
         raise HTTPException(status_code=503, detail="Model manager not initialized")
     
-    return await model_manager.get_all_available_models()
+    models = await model_manager.get_all_available_models()
+    return {"models": models}
 
 
 # Get model availability

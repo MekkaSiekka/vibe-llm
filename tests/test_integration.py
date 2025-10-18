@@ -91,7 +91,7 @@ class TestIntegration:
     async def test_actual_model_loading(self, temp_cache_dir):
         """Test actual model loading (this will download the model)."""
         model = QwenModel(
-            model_id="Qwen/Qwen-0.5B-Chat",  # Small model for testing
+            model_id="Qwen/Qwen3-0.6B",  # Small model for testing
             cache_dir=str(temp_cache_dir),
             device="cpu"
         )
@@ -118,7 +118,7 @@ class TestIntegration:
     async def test_actual_model_generation(self, temp_cache_dir):
         """Test actual text generation with loaded model."""
         model = QwenModel(
-            model_id="Qwen/Qwen-0.5B-Chat",
+            model_id="Qwen/Qwen3-0.6B",
             cache_dir=str(temp_cache_dir),
             device="cpu"
         )

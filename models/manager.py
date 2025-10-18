@@ -34,6 +34,7 @@ class ModelInfo:
     mobile_optimized: bool = False
     accuracy: Optional[float] = None  # For AI detectors
     description: Optional[str] = None  # Model description
+    precision_mode: Optional[str] = None  # e.g., "fp16" to force full precision on big GPUs
 
 
 class ModelManager:
@@ -84,10 +85,17 @@ class ModelManager:
     def current_model(self, value):
         """Backwards compatibility setter - sets the appropriate model type."""
         # Try to determine what kind of model this is
+        # Chat models have model_id directly, detectors have metadata.model_id
+        value_model_id = None
         if hasattr(value, 'model_id'):
+            value_model_id = value.model_id
+        elif hasattr(value, 'metadata') and hasattr(value.metadata, 'model_id'):
+            value_model_id = value.metadata.model_id
+            
+        if value_model_id:
             # Look up model type in our available models
             for model_info in self.available_models.values():
-                if hasattr(value, 'model_id') and model_info.model_id == value.model_id:
+                if model_info.model_id == value_model_id:
                     if model_info.model_type == "chat":
                         self.current_chat_model = value
                     elif model_info.model_type == "ai_detector":
@@ -113,6 +121,7 @@ class ModelManager:
                 mobile_optimized=model_data.get("mobile_optimized", False),
                 accuracy=model_data.get("accuracy", None),
                 description=model_data.get("description", None),
+                precision_mode=model_data.get("precision_mode", None),
                 available=self._check_model_availability(model_data["model_id"])
             )
             
@@ -131,7 +140,8 @@ class ModelManager:
                 self.model_instances[model_info.name] = QwenModel(
                     model_id=model_info.model_id,
                     cache_dir=str(self.cache_dir),
-                    device=model_info.device
+                    device=model_info.device,
+                    precision_mode=model_info.precision_mode
                 )
         
         chat_models = len([m for m in self.available_models.values() if m.model_type == "chat"])
@@ -199,16 +209,19 @@ class ModelManager:
             try:
                 # Unload current model of the same type if different
                 current_model = None
+                current_model_id = None
                 if model_type == "chat":
                     current_model = self.current_chat_model
+                    current_model_id = current_model.model_id if current_model else None
                 elif model_type == "ai_detector":
                     current_model = self.current_ai_detector
+                    current_model_id = current_model.metadata.model_id if current_model else None
                 
-                if current_model and current_model.model_id != model_info.model_id:
+                if current_model and current_model_id and current_model_id != model_info.model_id:
                     await current_model.unload()
                     # Update loaded status for previous model
                     for info in self.available_models.values():
-                        if info.model_id == current_model.model_id and info.model_type == model_type:
+                        if info.model_id == current_model_id and info.model_type == model_type:
                             info.loaded = False
                             break
                 
@@ -269,8 +282,15 @@ class ModelManager:
         try:
             await current_model.unload()
             
-            # Update loaded status
-            current_model_id = getattr(current_model, 'model_id', None)
+            # Update loaded status - handle both chat models and detectors
+            if model_type == "chat":
+                current_model_id = getattr(current_model, 'model_id', None)
+            elif model_type == "ai_detector":
+                current_model_id = getattr(current_model, 'metadata', None)
+                current_model_id = getattr(current_model_id, 'model_id', None) if current_model_id else None
+            else:
+                current_model_id = None
+                
             if current_model_id:
                 for info in self.available_models.values():
                     if info.model_id == current_model_id and info.model_type == model_type:
@@ -291,13 +311,14 @@ class ModelManager:
             return {"error": f"Error unloading model: {str(e)}"}
     
     async def generate_response(
-        self, 
-        prompt: str, 
-        max_length: int = 2048,
-        temperature: float = 0.7,
-        top_p: float = 0.9,
+        self,
+        prompt: str,
+        max_length: int = 4096,  # Increased default to match model improvements
+        temperature: float = 0.8,  # Updated to match model defaults
+        top_p: float = 0.95,  # Updated to match model defaults
         language: str = "auto",
-        system_prompt: Optional[str] = None  # Added for backwards compatibility
+        system_prompt: Optional[str] = None,  # Added for backwards compatibility
+        conversation_history: Optional[List[Dict[str, str]]] = None
     ):
         """Generate response using the currently loaded chat model."""
         logger.info(f"ModelManager.generate_response called with prompt='{prompt}', max_length={max_length}")
@@ -322,7 +343,8 @@ class ModelManager:
                     temperature=temperature,
                     top_p=top_p,
                     language=language,
-                    system_prompt=system_prompt  # Pass through if provided
+                    system_prompt=system_prompt,  # Pass through if provided
+                    conversation_history=conversation_history  # Pass conversation history
                 ):
                     chunk_count += 1
                     logger.info(f"ModelManager received chunk #{chunk_count}: {repr(chunk)}")

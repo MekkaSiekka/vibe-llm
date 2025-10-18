@@ -78,6 +78,9 @@ async def handle_websocket(websocket: WebSocket, client_id: str = "default"):
             max_length = message_data.get("max_length", 2048)
             temperature = message_data.get("temperature", 0.7)
             top_p = message_data.get("top_p", 0.9)
+            conversation_history = message_data.get("conversation_history", None)
+            
+            logger.info(f"WebSocket received message: '{message}' with history: {len(conversation_history) if conversation_history else 0} messages")
             
             if not message:
                 await manager.send_message(client_id, {
@@ -121,7 +124,8 @@ async def handle_websocket(websocket: WebSocket, client_id: str = "default"):
                     prompt=message,
                     max_length=max_length,
                     temperature=temperature,
-                    top_p=top_p
+                    top_p=top_p,
+                    conversation_history=conversation_history
                 ):
                     chunk_count += 1
                     full_response += chunk

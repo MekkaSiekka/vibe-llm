@@ -68,10 +68,6 @@ class HardwareDetector:
         """Get list of models compatible with current hardware."""
         compatible_models = []
         
-        # AI Detection models based on hardware
-        ai_detection_models = self._get_ai_detection_models()
-        compatible_models.extend(ai_detection_models)
-        
         # Qwen model variants based on hardware
         if self.specs.has_gpu and self.specs.gpu_memory_gb >= 8:
             # High-end GPU models - prioritize quality models for powerful hardware
@@ -82,6 +78,35 @@ class HardwareDetector:
                     "size_gb": 10,
                     "languages": ["en", "zh", "fr", "de", "es", "ru", "ja", "ko"],
                     "recommended": True,
+                    "device": "cuda"
+                },
+                # 14B FP16 variant for GPUs with >=28GB VRAM. This uses more VRAM for higher quality.
+                {
+                    "name": "Qwen2.5-14B-Instruct-FP16",
+                    "model_id": "Qwen/Qwen2.5-14B-Instruct",
+                    "size_gb": 28,
+                    "languages": ["en", "zh", "fr", "de", "es", "ru", "ja", "ko"],
+                    "recommended": self.specs.gpu_memory_gb is not None and self.specs.gpu_memory_gb >= 28,
+                    "device": "cuda",
+                    "precision_mode": "fp16",
+                    "description": "Forces FP16 loading (no quant) on >=28GB VRAM to use ~28-32GB"
+                },
+                # 14B fits well on 24GB+ VRAM with FP16 or on 16GB+ with 8-bit
+                {
+                    "name": "Qwen2.5-14B-Instruct",
+                    "model_id": "Qwen/Qwen2.5-14B-Instruct",
+                    "size_gb": 28,
+                    "languages": ["en", "zh", "fr", "de", "es", "ru", "ja", "ko"],
+                    "recommended": self.specs.gpu_memory_gb is not None and self.specs.gpu_memory_gb >= 24,
+                    "device": "cuda"
+                },
+                # Very large model; requires quantization on single GPU. Offer when VRAM is huge
+                {
+                    "name": "Qwen2.5-32B-Instruct",
+                    "model_id": "Qwen/Qwen2.5-32B-Instruct",
+                    "size_gb": 64,
+                    "languages": ["en", "zh", "fr", "de", "es", "ru", "ja", "ko"],
+                    "recommended": self.specs.gpu_memory_gb is not None and self.specs.gpu_memory_gb >= 48,
                     "device": "cuda"
                 },
                 {
@@ -97,6 +122,46 @@ class HardwareDetector:
                     "model_id": "Qwen/Qwen2.5-3B-Instruct",
                     "size_gb": 6,
                     "languages": ["en", "zh", "fr", "de", "es", "ru", "ja", "ko"],
+                    "recommended": False,
+                    "device": "cuda"
+                },
+                {
+                    "name": "Mistral-7B-Instruct",
+                    "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+                    "size_gb": 13,
+                    "languages": ["en"],
+                    "recommended": False,
+                    "device": "cuda"
+                },
+                {
+                    "name": "Phi-3-mini-4k-instruct",
+                    "model_id": "microsoft/Phi-3-mini-4k-instruct",
+                    "size_gb": 3.8,
+                    "languages": ["en"],
+                    "recommended": False,
+                    "device": "cuda"
+                },
+                {
+                    "name": "DeepSeek-R1-Distill-Llama-8B",
+                    "model_id": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+                    "size_gb": 15,
+                    "languages": ["en"],
+                    "recommended": False,
+                    "device": "cuda"
+                },
+                {
+                    "name": "Llama-3.1-8B-Instruct",
+                    "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+                    "size_gb": 16,
+                    "languages": ["en"],
+                    "recommended": False,
+                    "device": "cuda"
+                },
+                {
+                    "name": "Gemma-2-9B-it",
+                    "model_id": "google/gemma-2-9b-it",
+                    "size_gb": 18,
+                    "languages": ["en"],
                     "recommended": False,
                     "device": "cuda"
                 },
@@ -149,181 +214,89 @@ class HardwareDetector:
                 }
             ])
         
-        return compatible_models
-    
-    def _get_ai_detection_models(self) -> List[Dict[str, any]]:
-        """Get AI detection models compatible with current hardware."""
-        ai_models = []
+        # Add AI Detection Models
+        ai_detection_models = []
         
-        # Ultra high-end GPU (12GB+) - can run the most powerful models
-        if self.specs.has_gpu and self.specs.gpu_memory_gb >= 12:
-            ai_models.extend([
+        # High-end AI detection models (8GB+ VRAM)
+        if self.specs.has_gpu and self.specs.gpu_memory_gb >= 8:
+            ai_detection_models.extend([
                 {
-                    "name": "DeBERTa-V2-XLarge-Detector",
-                    "model_id": "microsoft/deberta-v2-xlarge",
-                    "size_gb": 2.3,
-                    "languages": ["en", "multilingual"],
-                    "recommended": True,
-                    "device": "cuda",
-                    "model_type": "ai_detector",
-                    "accuracy": 0.98,
-                    "description": "State-of-the-art transformer - highest accuracy"
-                },
-                {
-                    "name": "DeBERTa-V3-Large-Detector",
-                    "model_id": "microsoft/deberta-v3-large",
-                    "size_gb": 1.8,
-                    "languages": ["en", "multilingual"],
-                    "recommended": True,
-                    "device": "cuda",
-                    "model_type": "ai_detector",
-                    "accuracy": 0.96,
-                    "description": "Large DeBERTa model - excellent performance"
-                },
-                {
-                    "name": "RoBERTa-Large-OpenAI-Detector",
-                    "model_id": "roberta-large-openai-detector",
+                    "name": "roberta-large-openai-detector",
+                    "model_id": "openai-community/roberta-large-openai-detector",
                     "size_gb": 1.4,
                     "languages": ["en"],
-                    "recommended": True,
-                    "device": "cuda",
                     "model_type": "ai_detector",
+                    "recommended": self.specs.gpu_memory_gb >= 12,
+                    "device": "cuda",
                     "accuracy": 0.97,
-                    "description": "Large RoBERTa OpenAI detector - very high accuracy"
+                    "description": "Large RoBERTa OpenAI detector - high accuracy"
                 },
                 {
-                    "name": "Advanced-Mixed-Detector",
-                    "model_id": "andreas122001/roberta-mixed-detector",
-                    "size_gb": 0.6,
+                    "name": "deberta-v3-large",
+                    "model_id": "microsoft/deberta-v3-large",
+                    "size_gb": 1.8,
                     "languages": ["en"],
-                    "recommended": True,
-                    "device": "cuda",
                     "model_type": "ai_detector",
-                    "accuracy": 0.95,
-                    "description": "Advanced mixed AI content detector"
-                },
-            ])
-        
-        # High-end GPU (8-12GB) - can run larger detection models
-        if self.specs.has_gpu and self.specs.gpu_memory_gb >= 8:
-            ai_models.extend([
-                {
-                    "name": "RoBERTa-OpenAI-Detector",
-                    "model_id": "openai-community/roberta-base-openai-detector",
-                    "size_gb": 0.5,
-                    "languages": ["en"],
-                    "recommended": self.specs.gpu_memory_gb < 12,
+                    "recommended": self.specs.gpu_memory_gb >= 12,
                     "device": "cuda",
-                    "model_type": "ai_detector",
-                    "accuracy": 0.95,
-                    "description": "High accuracy AI text detector"
+                    "accuracy": 0.96,
+                    "description": "DeBERTa-v3 Large - state-of-the-art transformer"
                 },
                 {
-                    "name": "BERT-ChatGPT-Detector",
+                    "name": "chatgpt-detector-roberta",
                     "model_id": "Hello-SimpleAI/chatgpt-detector-roberta",
                     "size_gb": 0.5,
                     "languages": ["en"],
+                    "model_type": "ai_detector",
                     "recommended": False,
                     "device": "cuda",
+                    "accuracy": 0.93,
+                    "description": "Specialized ChatGPT detector"
+                }
+            ])
+        
+        # Mid-range AI detection models (4-8GB VRAM or CPU)
+        if (self.specs.has_gpu and self.specs.gpu_memory_gb >= 4) or self.specs.available_memory_gb >= 4:
+            device = "cuda" if self.specs.has_gpu else "cpu"
+            ai_detection_models.extend([
+                {
+                    "name": "roberta-base-openai-detector",
+                    "model_id": "openai-community/roberta-base-openai-detector",
+                    "size_gb": 0.5,
+                    "languages": ["en"],
                     "model_type": "ai_detector",
-                    "accuracy": 0.92,
-                    "description": "Specialized ChatGPT content detector"
+                    "recommended": self.specs.gpu_memory_gb < 8 if self.specs.has_gpu else True,
+                    "device": device,
+                    "accuracy": 0.95,
+                    "description": "OpenAI roberta-based detector - efficient and accurate"
                 },
                 {
-                    "name": "DeBERTa-V3-Base-Detector",
+                    "name": "chatgpt-detector-single",
+                    "model_id": "Hello-SimpleAI/chatgpt-detector-single",
+                    "size_gb": 0.4,
+                    "languages": ["en"],
+                    "model_type": "ai_detector",
+                    "recommended": False,
+                    "device": device,
+                    "accuracy": 0.90,
+                    "description": "GPTZero-style single model detector"
+                },
+                {
+                    "name": "deberta-v3-base",
                     "model_id": "microsoft/deberta-v3-base",
                     "size_gb": 0.8,
                     "languages": ["en"],
-                    "recommended": self.specs.gpu_memory_gb >= 10 and self.specs.gpu_memory_gb < 12,
-                    "device": "cuda",
                     "model_type": "ai_detector",
+                    "recommended": False,
+                    "device": device,
                     "accuracy": 0.94,
-                    "description": "Efficient DeBERTa transformer"
-                },
-                {
-                    "name": "GPTZero-Style-Single-Detector",
-                    "model_id": "Hello-SimpleAI/chatgpt-detector-single",
-                    "size_gb": 0.5,
-                    "languages": ["en"],
-                    "recommended": False,
-                    "device": "cuda",
-                    "model_type": "ai_detector",
-                    "accuracy": 0.92,
-                    "description": "GPTZero-style ChatGPT detection model"
-                },
-                {
-                    "name": "DeBERTa-V3-Detector",
-                    "model_id": "microsoft/deberta-v3-base",
-                    "size_gb": 0.7,
-                    "languages": ["en", "zh"],
-                    "recommended": False,
-                    "device": "cuda",
-                    "model_type": "ai_detector",
-                    "accuracy": 0.94,
-                    "description": "Advanced multilingual AI detector"
+                    "description": "DeBERTa-v3 Base - efficient transformer"
                 }
             ])
         
-        # Mid-range GPU - efficient detection models
-        elif self.specs.has_gpu and self.specs.gpu_memory_gb >= 4:
-            ai_models.extend([
-                {
-                    "name": "RoBERTa-OpenAI-Detector",
-                    "model_id": "openai-community/roberta-base-openai-detector",
-                    "size_gb": 0.5,
-                    "languages": ["en"],
-                    "recommended": True,
-                    "device": "cuda",
-                    "model_type": "ai_detector",
-                    "accuracy": 0.95,
-                    "description": "High accuracy AI text detector"
-                },
-                {
-                    "name": "DistilBERT-Detector",
-                    "model_id": "distilbert-base-uncased",
-                    "size_gb": 0.3,
-                    "languages": ["en"],
-                    "recommended": False,
-                    "device": "cuda",
-                    "model_type": "ai_detector",
-                    "accuracy": 0.88,
-                    "description": "Fast and efficient detector"
-                }
-            ])
+        compatible_models.extend(ai_detection_models)
         
-        # CPU-only systems - lightweight models
-        if self.specs.available_memory_gb >= 4:
-            ai_models.extend([
-                {
-                    "name": "RoBERTa-OpenAI-Detector-CPU",
-                    "model_id": "openai-community/roberta-base-openai-detector",
-                    "size_gb": 0.5,
-                    "languages": ["en"],
-                    "recommended": True if not self.specs.has_gpu else False,
-                    "device": "cpu",
-                    "model_type": "ai_detector",
-                    "accuracy": 0.95,
-                    "description": "High accuracy AI text detector (CPU)"
-                }
-            ])
-        
-        # Low-memory systems - ultra-light models
-        if self.specs.available_memory_gb >= 2:
-            ai_models.extend([
-                {
-                    "name": "DistilBERT-Detector-CPU",
-                    "model_id": "distilbert-base-uncased",
-                    "size_gb": 0.3,
-                    "languages": ["en"],
-                    "recommended": False,
-                    "device": "cpu",
-                    "model_type": "ai_detector",
-                    "accuracy": 0.88,
-                    "description": "Lightweight detector for low-memory systems"
-                }
-            ])
-        
-        return ai_models
+        return compatible_models
     
     def estimate_performance(self, model_size_gb: float) -> Dict[str, any]:
         """Estimate model performance based on hardware specs."""

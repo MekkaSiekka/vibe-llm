@@ -68,10 +68,19 @@ class HFSequenceClassifierDetector(AIDetector):
                         bnb_4bit_quant_type="nf4",
                     )
 
+            # Load tokenizer with special handling for DeBERTa models
+            tokenizer_kwargs = {
+                "cache_dir": self.cache_dir,
+                "trust_remote_code": True,
+            }
+            
+            # DeBERTa models need use_fast=False to avoid conversion issues
+            if "deberta" in self.metadata.model_id.lower():
+                tokenizer_kwargs["use_fast"] = False
+                
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.metadata.model_id,
-                cache_dir=self.cache_dir,
-                trust_remote_code=True,
+                **tokenizer_kwargs
             )
 
             kwargs = {
