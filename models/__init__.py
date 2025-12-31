@@ -7,6 +7,7 @@ Provides hot-switchable model management with hardware detection and compatibili
 from .manager import ModelManager
 from .detector import HardwareDetector
 from .qwen import QwenModel
+from .exllama import ExLlamaModel
 
-__all__ = ["ModelManager", "HardwareDetector", "QwenModel"]
+__all__ = ["ModelManager", "HardwareDetector", "QwenModel", "ExLlamaModel"]
 

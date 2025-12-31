@@ -150,6 +150,25 @@ class HardwareDetector:
                     "device": "cuda"
                 },
                 {
+                    "name": "DeepSeek-R1-Distill-Qwen-32B-Abliterated",
+                    "model_id": "huihui-ai/DeepSeek-R1-Distill-Qwen-32B-abliterated",
+                    "size_gb": 64,
+                    "languages": ["en", "zh"],
+                    "recommended": self.specs.gpu_memory_gb is not None and self.specs.gpu_memory_gb >= 28,
+                    "device": "cuda",
+                    "description": "DeepSeek R1 distilled into Qwen 32B - uncensored reasoning model"
+                },
+                {
+                    "name": "Llama-3.3-70B-Instruct-EXL2",
+                    "model_id": "Dracones/Llama-3.3-70B-Instruct_exl2_2.5bpw",
+                    "size_gb": 25,
+                    "languages": ["en"],
+                    "recommended": self.specs.gpu_memory_gb is not None and self.specs.gpu_memory_gb >= 28,
+                    "device": "cuda",
+                    "quantization_format": "exl2",
+                    "description": "Llama 3.3 70B with EXL2 2.5bpw quantization - fits in 32GB VRAM"
+                },
+                {
                     "name": "Llama-3.1-8B-Instruct",
                     "model_id": "meta-llama/Llama-3.1-8B-Instruct",
                     "size_gb": 16,

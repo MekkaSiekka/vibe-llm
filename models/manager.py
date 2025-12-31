@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .detector import HardwareDetector
 from .qwen import QwenModel
+from .exllama import ExLlamaModel
 from detectors.registry import get_registry
 from detectors.base import AIDetector
 from detectors.register_defaults import register_defaults
@@ -35,6 +36,7 @@ class ModelInfo:
     accuracy: Optional[float] = None  # For AI detectors
     description: Optional[str] = None  # Model description
     precision_mode: Optional[str] = None  # e.g., "fp16" to force full precision on big GPUs
+    quantization_format: Optional[str] = None  # e.g., "exl2" for ExLlamaV2 models
 
 
 class ModelManager:
@@ -122,6 +124,7 @@ class ModelManager:
                 accuracy=model_data.get("accuracy", None),
                 description=model_data.get("description", None),
                 precision_mode=model_data.get("precision_mode", None),
+                quantization_format=model_data.get("quantization_format", None),
                 available=self._check_model_availability(model_data["model_id"])
             )
             
@@ -136,7 +139,15 @@ class ModelManager:
                     self.model_instances[model_info.name] = detector_instance
                 except Exception as e:
                     logger.warning(f"Failed to create detector instance for {model_info.name}: {e}")
-            else:  # Default to chat model
+            elif model_info.quantization_format == "exl2":
+                # Use ExLlamaModel for EXL2 quantized models
+                self.model_instances[model_info.name] = ExLlamaModel(
+                    model_id=model_info.model_id,
+                    cache_dir=str(self.cache_dir),
+                    device=model_info.device,
+                    precision_mode=model_info.precision_mode
+                )
+            else:  # Default to QwenModel for standard HuggingFace models
                 self.model_instances[model_info.name] = QwenModel(
                     model_id=model_info.model_id,
                     cache_dir=str(self.cache_dir),
@@ -145,8 +156,9 @@ class ModelManager:
                 )
         
         chat_models = len([m for m in self.available_models.values() if m.model_type == "chat"])
+        exl2_models = len([m for m in self.available_models.values() if m.quantization_format == "exl2"])
         ai_detectors = len([m for m in self.available_models.values() if m.model_type == "ai_detector"])
-        logger.info(f"Initialized {chat_models} chat models and {ai_detectors} AI detection models")
+        logger.info(f"Initialized {chat_models} chat models ({exl2_models} EXL2) and {ai_detectors} AI detection models")
     
     def _check_model_availability(self, model_id: str) -> bool:
         """Check if model is available locally or can be downloaded."""

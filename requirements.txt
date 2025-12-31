@@ -12,6 +12,7 @@ torchvision==0.23.0+cu128
 torchaudio==2.8.0+cu128
 accelerate==0.25.0
 protobuf==4.25.1
+exllamav2>=0.2.4
 
 # AI Detection dependencies
 bitsandbytes==0.44.1
