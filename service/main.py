@@ -6,6 +6,8 @@ Provides REST API endpoints for local LLM interactions with Perplexity-like inte
 
 import os
 import asyncio
+import signal
+import atexit
 from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
 
@@ -15,8 +17,24 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from loguru import logger
 import uvicorn
+import torch
 
 from models.manager import ModelManager
+
+
+def cleanup_gpu_memory():
+    """Emergency GPU cleanup on process exit."""
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            logger.info("Emergency GPU cleanup completed")
+    except Exception as e:
+        logger.warning(f"GPU cleanup error: {e}")
+
+
+# Register emergency cleanup
+atexit.register(cleanup_gpu_memory)
 
 
 # Global model manager instance
@@ -41,10 +59,19 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Shutdown
+    # Shutdown - unload ALL models to free GPU memory
     logger.info("Shutting down Local LLM Service...")
     if model_manager:
-        await model_manager.unload_current_model()
+        # Unload chat model
+        if model_manager.current_chat_model:
+            await model_manager.unload_current_model("chat")
+        # Unload AI detector
+        if model_manager.current_ai_detector:
+            await model_manager.unload_current_model("ai_detector")
+        # Final GPU memory cleanup
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            logger.info("GPU memory cache cleared")
 
 
 # Create FastAPI app
@@ -264,11 +291,10 @@ async def simple_chat(message: str, model: Optional[str] = None):
     try:
         async for chunk in model_manager.generate_response(prompt=message):
             chunk_count += 1
-            logger.info(f"Received chunk #{chunk_count}: {repr(chunk)}")
             response_chunks.append(chunk)
         
         full_response = "".join(response_chunks)
-        logger.info(f"Generation complete. Total chunks: {chunk_count}, Full response: {repr(full_response)}")
+        logger.info(f"Generation complete. Total chunks: {chunk_count}")
         
         return {"response": full_response}
     except Exception as e:

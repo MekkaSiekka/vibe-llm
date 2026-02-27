@@ -77,7 +77,7 @@ class HardwareDetector:
                     "model_id": "Qwen/Qwen2.5-7B-Instruct",
                     "size_gb": 10,
                     "languages": ["en", "zh", "fr", "de", "es", "ru", "ja", "ko"],
-                    "recommended": True,
+                    "recommended": False,
                     "device": "cuda"
                 },
                 # 14B FP16 variant for GPUs with >=28GB VRAM. This uses more VRAM for higher quality.
@@ -86,7 +86,7 @@ class HardwareDetector:
                     "model_id": "Qwen/Qwen2.5-14B-Instruct",
                     "size_gb": 28,
                     "languages": ["en", "zh", "fr", "de", "es", "ru", "ja", "ko"],
-                    "recommended": self.specs.gpu_memory_gb is not None and self.specs.gpu_memory_gb >= 28,
+                    "recommended": False,
                     "device": "cuda",
                     "precision_mode": "fp16",
                     "description": "Forces FP16 loading (no quant) on >=28GB VRAM to use ~28-32GB"
@@ -97,7 +97,7 @@ class HardwareDetector:
                     "model_id": "Qwen/Qwen2.5-14B-Instruct",
                     "size_gb": 28,
                     "languages": ["en", "zh", "fr", "de", "es", "ru", "ja", "ko"],
-                    "recommended": self.specs.gpu_memory_gb is not None and self.specs.gpu_memory_gb >= 24,
+                    "recommended": False,
                     "device": "cuda"
                 },
                 # Very large model; requires quantization on single GPU. Offer when VRAM is huge
@@ -106,7 +106,7 @@ class HardwareDetector:
                     "model_id": "Qwen/Qwen2.5-32B-Instruct",
                     "size_gb": 64,
                     "languages": ["en", "zh", "fr", "de", "es", "ru", "ja", "ko"],
-                    "recommended": self.specs.gpu_memory_gb is not None and self.specs.gpu_memory_gb >= 48,
+                    "recommended": False,
                     "device": "cuda"
                 },
                 {
@@ -154,7 +154,7 @@ class HardwareDetector:
                     "model_id": "huihui-ai/DeepSeek-R1-Distill-Qwen-32B-abliterated",
                     "size_gb": 64,
                     "languages": ["en", "zh"],
-                    "recommended": self.specs.gpu_memory_gb is not None and self.specs.gpu_memory_gb >= 28,
+                    "recommended": True,
                     "device": "cuda",
                     "description": "DeepSeek R1 distilled into Qwen 32B - uncensored reasoning model"
                 },
@@ -163,7 +163,7 @@ class HardwareDetector:
                     "model_id": "Dracones/Llama-3.3-70B-Instruct_exl2_2.5bpw",
                     "size_gb": 25,
                     "languages": ["en"],
-                    "recommended": self.specs.gpu_memory_gb is not None and self.specs.gpu_memory_gb >= 28,
+                    "recommended": False,
                     "device": "cuda",
                     "quantization_format": "exl2",
                     "description": "Llama 3.3 70B with EXL2 2.5bpw quantization - fits in 32GB VRAM"
@@ -201,7 +201,7 @@ class HardwareDetector:
                     "model_id": "Qwen/Qwen2.5-3B-Instruct",
                     "size_gb": 6,
                     "languages": ["en", "zh", "fr", "de", "es", "ru", "ja", "ko"],
-                    "recommended": True,
+                    "recommended": False,
                     "device": "cuda"
                 }
             ])
@@ -240,12 +240,23 @@ class HardwareDetector:
         if self.specs.has_gpu and self.specs.gpu_memory_gb >= 8:
             ai_detection_models.extend([
                 {
+                    "name": "Qwen2.5-7B-AI-Detector",
+                    "model_id": "Qwen/Qwen2.5-7B-Instruct",
+                    "size_gb": 10.0,
+                    "languages": ["en", "zh", "multilingual"],
+                    "model_type": "ai_detector",
+                    "recommended": self.specs.gpu_memory_gb >= 12,
+                    "device": "cuda",
+                    "accuracy": 0.92,
+                    "description": "Qwen2.5-7B with LoRA - generative AI detector with multilingual support"
+                },
+                {
                     "name": "roberta-large-openai-detector",
                     "model_id": "openai-community/roberta-large-openai-detector",
                     "size_gb": 1.4,
                     "languages": ["en"],
                     "model_type": "ai_detector",
-                    "recommended": self.specs.gpu_memory_gb >= 12,
+                    "recommended": False,
                     "device": "cuda",
                     "accuracy": 0.97,
                     "description": "Large RoBERTa OpenAI detector - high accuracy"

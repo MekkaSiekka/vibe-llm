@@ -8,6 +8,7 @@ import torch
 
 from .registry import get_registry, RegistryEntry
 from .hf_sequence import HFSequenceClassifierDetector, HFDetectorConfig
+from .qwen_lora import QwenLoRADetector, QwenLoRAConfig
 from .base import DetectorMetadata
 
 
@@ -114,6 +115,34 @@ def register_defaults() -> None:
     
     # Combine models based on hardware capability
     defaults = high_end_models + mid_range_models
+
+    # Register Qwen LoRA detector for high-end GPUs (8GB+ VRAM)
+    if vram_gb >= 8.0:
+        qwen_lora_cfg = QwenLoRAConfig(
+            model_id="Qwen/Qwen2.5-7B-Instruct",
+            lora_adapter_id=None,  # Base model for now; can add LoRA adapter ID later
+            device=device,
+            size_gb=10.0,
+            languages=["en", "zh", "multilingual"],
+            recommended=vram_gb >= 12.0,
+            accuracy=0.92,
+            description="Qwen2.5-7B with LoRA - generative AI detector with multilingual support",
+        )
+        qwen_meta = DetectorMetadata(
+            name="Qwen2.5-7B-AI-Detector",
+            model_id=qwen_lora_cfg.model_id,
+            device=qwen_lora_cfg.device,
+            size_gb=qwen_lora_cfg.size_gb,
+            languages=qwen_lora_cfg.languages,
+            recommended=qwen_lora_cfg.recommended,
+            accuracy=qwen_lora_cfg.accuracy,
+            description=qwen_lora_cfg.description,
+        )
+
+        def _qwen_factory(det_name: str, cache_dir: str, c: QwenLoRAConfig = qwen_lora_cfg):
+            return QwenLoRADetector(det_name, cache_dir, c)
+
+        reg.register("Qwen2.5-7B-AI-Detector", RegistryEntry(create_fn=_qwen_factory, metadata=qwen_meta))
 
     for cfg in defaults:
         # Registry key based on HF id tail

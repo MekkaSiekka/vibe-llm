@@ -12,7 +12,9 @@ import type {
   WebSocketMessage,
 } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+// In development with Vite proxy, use /api. In production, use direct URL.
+const isDev = import.meta.env.DEV;
+const API_BASE = import.meta.env.VITE_API_URL || (isDev ? '/api' : 'http://localhost:8000');
 const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
 
 class ApiClient {

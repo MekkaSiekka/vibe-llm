@@ -359,7 +359,6 @@ class ModelManager:
                     conversation_history=conversation_history  # Pass conversation history
                 ):
                     chunk_count += 1
-                    logger.info(f"ModelManager received chunk #{chunk_count}: {repr(chunk)}")
                     response_chunks.append(chunk)
                     yield chunk
                 

@@ -25,6 +25,12 @@ class QwenModel:
         self.tokenizer = None
         self._loaded = False
         
+        # Context window management settings
+        self.max_context_tokens = 8192        # Maximum context size
+        self.preferred_context_tokens = 4096  # Preferred context size
+        self.min_context_tokens = 512         # Minimum context to keep
+        self.context_window_safety_margin = 256  # Safety margin for generation
+        
         # Language mappings for Qwen
         self.language_codes = {
             "en": "English",
@@ -108,12 +114,22 @@ class QwenModel:
                 )
                 logger.info(f"Fallback to 4-bit quantization (model ~{assumed_size_gb}GB, GPU {gpu_memory_gb:.1f}GB)")
         
-        # Load tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_id,
-            cache_dir=self.cache_dir,
-            trust_remote_code=True
-        )
+        # Load tokenizer (try offline first if model is cached, fallback to online)
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_id,
+                cache_dir=self.cache_dir,
+                trust_remote_code=True,
+                local_files_only=True
+            )
+            logger.info("Loaded tokenizer from local cache (offline mode)")
+        except Exception:
+            logger.info("Local tokenizer not found, downloading from HuggingFace...")
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_id,
+                cache_dir=self.cache_dir,
+                trust_remote_code=True
+            )
         
         # Load model with fallback if bitsandbytes is missing
         model_kwargs = {
@@ -128,30 +144,46 @@ class QwenModel:
         else:
             model_kwargs["device_map"] = "auto" if self.device == "cuda" else None
 
+        # Try offline first if model is cached, fallback to online
         try:
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_id,
+                local_files_only=True,
                 **model_kwargs
             )
-        except Exception as e:
-            error_message = str(e)
-            # If quantization requested but bitsandbytes is missing, fall back to FP16 when VRAM is sufficient
-            if "bitsandbytes" in error_message.lower() and self.device == "cuda" and torch.cuda.is_available():
-                gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-                # Try FP16 fallback for big GPUs (>= 28GB), which can handle 14B in memory
-                if gpu_memory_gb >= 28:
-                    logger.warning("bitsandbytes not available; retrying load without quantization (FP16) on large GPU")
-                    safe_kwargs = dict(model_kwargs)
-                    safe_kwargs.pop("quantization_config", None)
-                    safe_kwargs["device_map"] = "auto"
+            logger.info("Loaded model from local cache (offline mode)")
+        except Exception as offline_error:
+            # Check if it's a "not found locally" error vs other errors
+            offline_msg = str(offline_error).lower()
+            if "local_files_only" in offline_msg or "not found" in offline_msg or "does not appear" in offline_msg:
+                logger.info("Local model not found, downloading from HuggingFace...")
+                try:
                     self.model = AutoModelForCausalLM.from_pretrained(
                         self.model_id,
-                        **safe_kwargs
+                        **model_kwargs
                     )
-                else:
-                    raise
+                except Exception as e:
+                    error_message = str(e)
+                    # If quantization requested but bitsandbytes is missing, fall back to FP16 when VRAM is sufficient
+                    if "bitsandbytes" in error_message.lower() and self.device == "cuda" and torch.cuda.is_available():
+                        gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+                        # Try FP16 fallback for big GPUs (>= 28GB), which can handle 14B in memory
+                        if gpu_memory_gb >= 28:
+                            logger.warning("bitsandbytes not available; retrying load without quantization (FP16) on large GPU")
+                            safe_kwargs = dict(model_kwargs)
+                            safe_kwargs.pop("quantization_config", None)
+                            safe_kwargs["device_map"] = "auto"
+                            self.model = AutoModelForCausalLM.from_pretrained(
+                                self.model_id,
+                                **safe_kwargs
+                            )
+                        else:
+                            raise
+                    else:
+                        raise
             else:
-                raise
+                # Re-raise if it's a different error (not about local files)
+                raise offline_error
         
         # Set pad token if not exists
         if self.tokenizer.pad_token is None:
@@ -168,7 +200,9 @@ class QwenModel:
         conversation_history: Optional[List[Dict[str, str]]] = None
     ) -> AsyncGenerator[str, None]:
         """Generate text response asynchronously."""
-        logger.info(f"QwenModel.generate called with prompt='{prompt}', max_length={max_length}")
+        import time
+        start_time = time.time()
+        logger.info(f"[INPUT] prompt={repr(prompt[:200])}{'...' if len(prompt) > 200 else ''}")
         
         if not self._loaded:
             logger.info("Model not loaded, attempting to load...")
@@ -246,16 +280,49 @@ class QwenModel:
                 inputs = {k: v.to(model_device) for k, v in inputs.items()}
                 logger.info(f"Inputs moved to {model_device}")
             
-            # Generate response with real-time streaming
+            # Generate response with real-time streaming using TextIteratorStreamer
             logger.info("Starting streaming generation...")
+            
+            # Create streamer for real-time token output
+            streamer = TextIteratorStreamer(
+                self.tokenizer, 
+                skip_prompt=True, 
+                skip_special_tokens=True
+            )
+            
+            # Calculate max_new_tokens
+            input_length = inputs['input_ids'].shape[1]
+            max_new_tokens = min(max_length, 2048) - input_length
+            max_new_tokens = max(1, min(max_new_tokens, 1024))
+            
+            # Generation kwargs
+            generation_kwargs = {
+                **inputs,
+                "streamer": streamer,
+                "max_new_tokens": max_new_tokens,
+                "temperature": temperature if temperature > 0 else None,
+                "top_p": top_p if temperature > 0 else None,
+                "do_sample": temperature > 0,
+                "pad_token_id": self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
+                "eos_token_id": self.tokenizer.eos_token_id,
+            }
+            
+            # Run generation in background thread
+            def run_generation():
+                with torch.no_grad():
+                    self.model.generate(**generation_kwargs)
+            
+            task = asyncio.create_task(asyncio.to_thread(run_generation))
+            
             chunk_count = 0
+            generated_text = ""
             try:
                 while True:
                     try:
                         # Use default to prevent StopIteration bubbling into Future
                         chunk = await asyncio.wait_for(
                             asyncio.to_thread(lambda: next(streamer, None)),
-                            timeout=15.0,
+                            timeout=30.0,
                         )
                     except asyncio.TimeoutError:
                         logger.warning("Streamer timeout; stopping stream")
@@ -265,14 +332,19 @@ class QwenModel:
                     if not chunk:
                         continue
                     chunk_count += 1
-                    logger.info(f"QwenModel yielding chunk #{chunk_count}: {repr(chunk)}")
+                    generated_text += chunk
                     yield chunk
             finally:
                 # Ensure background task finishes
                 with contextlib.suppress(Exception):
                     await task
 
-            logger.info(f"QwenModel streaming complete. Total chunks: {chunk_count}")
+            # Log completion stats
+            elapsed = time.time() - start_time
+            word_count = len(generated_text.split())
+            tokens_per_sec = chunk_count / elapsed if elapsed > 0 else 0
+            logger.info(f"[OUTPUT] {word_count} words, {chunk_count} tokens in {elapsed:.2f}s ({tokens_per_sec:.1f} tok/s)")
+            logger.info(f"[OUTPUT] text={repr(generated_text[:300])}{'...' if len(generated_text) > 300 else ''}")
                 
         except Exception as e:
             logger.error(f"Error in QwenModel.generate: {e}")

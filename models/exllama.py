@@ -208,7 +208,9 @@ class ExLlamaModel:
         conversation_history: Optional[List[Dict[str, str]]] = None
     ) -> AsyncGenerator[str, None]:
         """Generate text response asynchronously with streaming."""
-        logger.info(f"ExLlamaModel.generate called with prompt='{prompt[:50]}...', max_length={max_length}")
+        import time
+        start_time = time.time()
+        logger.info(f"[INPUT] prompt={repr(prompt[:200])}{'...' if len(prompt) > 200 else ''}")
         
         if not self._loaded:
             logger.info("Model not loaded, attempting to load...")
@@ -260,7 +262,6 @@ class ExLlamaModel:
                 if chunk:
                     chunk_count += 1
                     generated_text += chunk
-                    logger.debug(f"Generated chunk #{chunk_count}: {repr(chunk)}")
                     yield chunk
                 
                 if eos:
@@ -275,7 +276,12 @@ class ExLlamaModel:
                 # Small delay for cooperative multitasking
                 await asyncio.sleep(0.001)
             
-            logger.info(f"ExLlamaModel generation complete. Total chunks: {chunk_count}")
+            # Log completion stats
+            elapsed = time.time() - start_time
+            word_count = len(generated_text.split())
+            tokens_per_sec = chunk_count / elapsed if elapsed > 0 else 0
+            logger.info(f"[OUTPUT] {word_count} words, {chunk_count} tokens in {elapsed:.2f}s ({tokens_per_sec:.1f} tok/s)")
+            logger.info(f"[OUTPUT] text={repr(generated_text[:300])}{'...' if len(generated_text) > 300 else ''}")
             
         except Exception as e:
             logger.error(f"Error in ExLlamaModel.generate: {e}")
